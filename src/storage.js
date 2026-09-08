@@ -23,6 +23,9 @@ const DEFAULT_DATA = {
     muteDurationMinutes: 60, // 0 = permanente (ou até ser desmutado)
     deleteBannedUserPosts: true, // banChatMember revoke_messages: true
     notifyInChat: true, // Avisar no chat quando alguém for punido
+    publicReportEnabled: true, // Qualquer usuário denunciar conteúdo ilícito por resposta
+    reporterMustBeAdmin: false, // false = qualquer usuário pode usar o comando; true = apenas admins
+    reportCommands: ['/denuncia', '/report', '/ilicito', '/ban'],
     botToken: ''
   },
   stats: {

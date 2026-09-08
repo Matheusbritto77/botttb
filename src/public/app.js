@@ -25,6 +25,8 @@ const elements = {
   toggleAntiLink: document.getElementById('toggleAntiLink'),
   muteDurationSelect: document.getElementById('muteDurationSelect'),
   toggleDeletePosts: document.getElementById('toggleDeletePosts'),
+  togglePublicReport: document.getElementById('togglePublicReport'),
+  toggleReporterAdminOnly: document.getElementById('toggleReporterAdminOnly'),
   toggleNotifyChat: document.getElementById('toggleNotifyChat'),
   tokenInput: document.getElementById('tokenInput'),
   btnToggleTokenVisibility: document.getElementById('btnToggleTokenVisibility'),
@@ -192,6 +194,8 @@ async function fetchSettings() {
     elements.toggleAntiLink.checked = Boolean(state.settings.antiLink);
     elements.muteDurationSelect.value = String(state.settings.muteDurationMinutes ?? 60);
     elements.toggleDeletePosts.checked = Boolean(state.settings.deleteBannedUserPosts !== false);
+    elements.togglePublicReport.checked = Boolean(state.settings.publicReportEnabled !== false);
+    elements.toggleReporterAdminOnly.checked = Boolean(state.settings.reporterMustBeAdmin);
     elements.toggleNotifyChat.checked = Boolean(state.settings.notifyInChat !== false);
   } catch (err) {
     console.error('Erro ao buscar configurações:', err);
@@ -381,6 +385,16 @@ function setupEvents() {
   // Toggle Excluir Posts
   elements.toggleDeletePosts.addEventListener('change', (e) => {
     updateSetting({ deleteBannedUserPosts: e.target.checked });
+  });
+
+  // Toggle Denúncia de Conteúdo Ilícito
+  elements.togglePublicReport.addEventListener('change', (e) => {
+    updateSetting({ publicReportEnabled: e.target.checked });
+  });
+
+  // Toggle Apenas Admins podem Denunciar
+  elements.toggleReporterAdminOnly.addEventListener('change', (e) => {
+    updateSetting({ reporterMustBeAdmin: e.target.checked });
   });
 
   // Toggle Notificação no Chat

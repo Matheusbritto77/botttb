@@ -85,4 +85,48 @@ const updatedLog = Storage.getLogs(5).find(l => l.id === logItem.id);
 assert.strictEqual(updatedLog.reverted, true);
 console.log('✓ Logs de Auditoria OK');
 
+// 5. Testes de Comandos de Denúncia de Conteúdo Ilícito
+console.log('5. Testando Comandos de Denúncia de Conteúdo Ilícito...');
+const REPORT_COMMANDS = ['/denuncia', '/report', '/ilicito', '/ilícito', '/ban', '/conteudoilicito', '!denuncia', '!report'];
+function isReportCommand(text) {
+  if (!text) return false;
+  const firstWord = text.trim().toLowerCase().split(/\s+/)[0].replace(/@\w+$/, '');
+  return REPORT_COMMANDS.includes(firstWord);
+}
+
+const validReportInputs = [
+  '/denuncia',
+  '/report',
+  '/ilicito',
+  '/ilícito',
+  '/ban',
+  '/denuncia@botttb_bot',
+  '/report motivo grave',
+  '!denuncia',
+  '  /ilicito  '
+];
+
+for (const input of validReportInputs) {
+  assert.strictEqual(isReportCommand(input), true, `Deveria reconhecer "${input}" como comando de denúncia`);
+}
+
+const invalidReportInputs = [
+  'olá bom dia',
+  'denuncia esse cara', // sem barra
+  '/denunciar', // comando diferente
+  '/help',
+  'qualquer coisa'
+];
+
+for (const input of invalidReportInputs) {
+  assert.strictEqual(isReportCommand(input), false, `Não deveria reconhecer "${input}" como comando de denúncia`);
+}
+
+// Testando storage das novas configurações
+Storage.updateSettings({ publicReportEnabled: true, reporterMustBeAdmin: false });
+assert.strictEqual(Storage.getSettings().publicReportEnabled, true);
+assert.strictEqual(Storage.getSettings().reporterMustBeAdmin, false);
+
+console.log('✓ Comandos de Denúncia e Configurações OK');
+
 console.log('--- TODOS OS TESTES PASSARAM COM SUCESSO! ---');

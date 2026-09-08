@@ -57,18 +57,52 @@ function checkForbiddenKeyword(text, keywords) {
   return null;
 }
 
+const REPORT_COMMANDS = ['/denuncia', '/report', '/ilicito', '/ilícito', '/ban', '/conteudoilicito', '!denuncia', '!report'];
+
 /**
- * Verifica se o usuário é Administrador ou Criador do grupo
+ * Verifica se o texto é um comando de denúncia
  */
-async function isUserAdmin(ctx) {
+function isReportCommand(text) {
+  if (!text) return false;
+  const firstWord = text.trim().toLowerCase().split(/\s+/)[0].replace(/@\w+$/, '');
+  return REPORT_COMMANDS.includes(firstWord);
+}
+
+/**
+ * Descreve o conteúdo ou tipo de mídia de uma mensagem
+ */
+function describeMessageContent(msg) {
+  if (!msg) return 'Conteúdo desconhecido';
+  if (msg.text) return msg.text;
+  if (msg.caption) return `[Legenda] ${msg.caption}`;
+  if (msg.photo) return '[Foto/Imagem]';
+  if (msg.video) return '[Vídeo]';
+  if (msg.animation) return '[GIF/Animação]';
+  if (msg.document) return `[Documento: ${msg.document.file_name || 'arquivo'}]`;
+  if (msg.voice) return '[Áudio/Voz]';
+  if (msg.audio) return '[Áudio/Música]';
+  if (msg.sticker) return `[Sticker ${msg.sticker.emoji || ''}]`;
+  return '[Mídia/Conteúdo]';
+}
+
+/**
+ * Verifica se determinado usuário é Administrador ou Criador do grupo
+ */
+async function isMemberAdmin(ctx, userId) {
   try {
     if (!ctx.chat || ctx.chat.type === 'private') return false;
-    const member = await ctx.getChatMember(ctx.from.id);
+    const member = await ctx.getChatMember(userId);
     return member.status === 'administrator' || member.status === 'creator';
   } catch (err) {
-    // Se falhar ao checar status, assume false por precaução
     return false;
   }
+}
+
+/**
+ * Verifica se o remetente atual é Administrador ou Criador do grupo
+ */
+async function isUserAdmin(ctx) {
+  return isMemberAdmin(ctx, ctx.from.id);
 }
 
 /**
@@ -103,7 +137,9 @@ function setupHandlers(bot) {
       console.log(`[Bot] Adicionado ao chat: "${ctx.chat.title}" (${ctx.chat.id})`);
       await ctx.reply(
         '🛡️ <b>Bot de Moderação Ativo!</b>\n\n' +
-        'Para que a proteção funcione perfeitamente, por favor me promova a <b>Administrador</b> com permissões para <i>Excluir mensagens</i> e <i>Banir usuários</i>.',
+        '• Moderação de palavras proibidas e anti-link automática.\n' +
+        '• <b>Denúncia de Conteúdo Ilícito:</b> Qualquer membro pode responder a uma mensagem ilícita com <code>/denuncia</code> ou <code>/report</code> para banir o infrator e excluir todas as suas mídias!\n\n' +
+        'Por favor me promova a <b>Administrador</b> com permissões para <i>Excluir mensagens</i> e <i>Banir usuários</i>.',
         { parse_mode: 'HTML' }
       ).catch(() => {});
     }
@@ -117,7 +153,7 @@ function setupHandlers(bot) {
     // Apenas monitora grupos e supergrupos
     if (ctx.chat.type !== 'group' && ctx.chat.type !== 'supergroup') {
       if (ctx.chat.type === 'private' && message.text === '/start') {
-        return ctx.reply('👋 Olá! Sou o Bot de Moderação. Adicione-me a um grupo como Administrador para gerenciar palavras proibidas e links.');
+        return ctx.reply('👋 Olá! Sou o Bot de Moderação. Adicione-me a um grupo como Administrador para gerenciar palavras proibidas, links e denúncias de conteúdo ilícito.');
       }
       return;
     }
@@ -127,13 +163,111 @@ function setupHandlers(bot) {
 
     Storage.incrementStat('totalMessagesChecked');
 
-    // Administradores são isentos de restrições
+    const text = message.text || message.caption || '';
+    const settings = Storage.getSettings();
+
+    // --- RECURSO: MARCAÇÃO / DENÚNCIA DE CONTEÚDO ILÍCITO VIA RESPOSTA (REPLY) ---
+    if (settings.publicReportEnabled !== false && isReportCommand(text)) {
+      const reportedMsg = message.reply_to_message;
+
+      // Se não marcou/respondeu nenhuma mensagem, dá a instrução de como usar
+      if (!reportedMsg) {
+        await ctx.deleteMessage(message.message_id).catch(() => {});
+        await sendTempWarning(
+          ctx,
+          'ℹ️ <b>Como denunciar conteúdo ilícito:</b>\nResponda diretamente (Reply) à mensagem ou mídia suspeita digitando <code>/denuncia</code> ou <code>/report</code> para banir o infrator e excluir todas as suas mídias.',
+          7000
+        );
+        return;
+      }
+
+      // Verifica se o usuário tem permissão caso reporterMustBeAdmin esteja ativo
+      if (settings.reporterMustBeAdmin) {
+        const isReporterAdmin = await isMemberAdmin(ctx, ctx.from.id);
+        if (!isReporterAdmin) {
+          await ctx.deleteMessage(message.message_id).catch(() => {});
+          await sendTempWarning(ctx, '⚠️ Apenas administradores podem utilizar este comando de moderação.', 6000);
+          return;
+        }
+      }
+
+      const reportedUser = reportedMsg.from;
+
+      // Mensagens anônimas de canal / grupo
+      if (!reportedUser) {
+        await ctx.deleteMessage(reportedMsg.message_id).catch(() => {});
+        await ctx.deleteMessage(message.message_id).catch(() => {});
+        await sendTempWarning(ctx, '🚨 Mensagem anônima/canal removida.', 6000);
+        return;
+      }
+
+      // Não permite banir bots do sistema ou o próprio bot
+      if (reportedUser.is_bot) {
+        await ctx.deleteMessage(message.message_id).catch(() => {});
+        await sendTempWarning(ctx, '⚠️ Não é possível banir um bot do sistema.', 6000);
+        return;
+      }
+
+      // Não permite banir administradores do grupo
+      const isTargetAdmin = await isMemberAdmin(ctx, reportedUser.id);
+      if (isTargetAdmin) {
+        await ctx.deleteMessage(message.message_id).catch(() => {});
+        await sendTempWarning(ctx, '⚠️ Ação bloqueada: Não é permitido banir administradores do grupo.', 6000);
+        return;
+      }
+
+      console.log(`[Denúncia] Conteúdo ilícito marcado por ${ctx.from.first_name} contra ${reportedUser.first_name} (${reportedUser.id})`);
+
+      // 1. Apaga a mensagem de comando do denunciante
+      await ctx.deleteMessage(message.message_id).catch(() => {});
+
+      // 2. Apaga a mensagem/mídia marcada
+      await ctx.deleteMessage(reportedMsg.message_id).catch(() => {});
+
+      // 3. Aplica o banimento no usuário infrator com revoke_messages: true (exclui todas as mídias e posts dele)
+      let banSuccess = false;
+      try {
+        await ctx.banChatMember(reportedUser.id, {
+          revoke_messages: settings.deleteBannedUserPosts !== false
+        });
+        banSuccess = true;
+      } catch (err) {
+        console.error('[Denúncia] Falha ao banir usuário denunciado:', err.message);
+      }
+
+      if (banSuccess) {
+        const contentDesc = describeMessageContent(reportedMsg);
+        const reporterTag = ctx.from.username ? `@${ctx.from.username}` : ctx.from.first_name;
+        const reportedTag = reportedUser.username ? `@${reportedUser.username}` : `ID: ${reportedUser.id}`;
+
+        Storage.incrementStat('totalBans');
+        Storage.addLog({
+          action: 'BAN',
+          userId: reportedUser.id,
+          userName: [reportedUser.first_name, reportedUser.last_name].filter(Boolean).join(' ') || reportedUser.username || 'Sem nome',
+          userTag: reportedTag,
+          chatId: ctx.chat.id,
+          chatTitle: ctx.chat.title,
+          reason: `Conteúdo ilícito denunciado por ${reporterTag} (Comando de marcação)`,
+          text: contentDesc
+        });
+
+        await sendTempWarning(
+          ctx,
+          `🚨 <b>Conteúdo Ilícito Removido!</b>\n` +
+          `<b>Infrator:</b> ${reportedUser.first_name} (${reportedTag})\n` +
+          `<b>Ação:</b> Usuário banido e todo o histórico de mensagens/mídias foi excluído.\n` +
+          `<b>Denunciado por:</b> ${reporterTag}`
+        );
+      }
+      return;
+    }
+
+    // Administradores são isentos das restrições de palavras e links
     const admin = await isUserAdmin(ctx);
     if (admin) return;
 
-    const text = message.text || message.caption || '';
     const keywords = Storage.getKeywords();
-    const settings = Storage.getSettings();
 
     // 1. CHECAGEM DE PALAVRAS-CHAVE PROIBIDAS (PRIORIDADE ALTA: BAN + REVOKE POSTS)
     const matchedKeyword = checkForbiddenKeyword(text, keywords);

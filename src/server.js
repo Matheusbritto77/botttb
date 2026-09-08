@@ -67,11 +67,13 @@ export function createServer() {
   });
 
   app.post('/api/settings', (req, res) => {
-    const { antiLink, muteDurationMinutes, deleteBannedUserPosts, notifyInChat } = req.body;
+    const { antiLink, muteDurationMinutes, deleteBannedUserPosts, notifyInChat, publicReportEnabled, reporterMustBeAdmin } = req.body;
     const updates = {};
     if (typeof antiLink === 'boolean') updates.antiLink = antiLink;
     if (typeof deleteBannedUserPosts === 'boolean') updates.deleteBannedUserPosts = deleteBannedUserPosts;
     if (typeof notifyInChat === 'boolean') updates.notifyInChat = notifyInChat;
+    if (typeof publicReportEnabled === 'boolean') updates.publicReportEnabled = publicReportEnabled;
+    if (typeof reporterMustBeAdmin === 'boolean') updates.reporterMustBeAdmin = reporterMustBeAdmin;
     if (muteDurationMinutes !== undefined) {
       const minutes = Number(muteDurationMinutes);
       if (!isNaN(minutes) && minutes >= 0) {

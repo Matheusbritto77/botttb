@@ -203,10 +203,34 @@
           <div class="setting-item">
             <div class="setting-info">
               <span class="setting-label">Excluir todas as mensagens ao Banir</span>
-              <span class="setting-hint">Ao banir por palavra-chave, remove o histórico do usuário no grupo.</span>
+              <span class="setting-hint">Ao banir por palavra-chave ou denúncia, remove o histórico do usuário no grupo.</span>
             </div>
             <label class="switch">
               <input type="checkbox" id="toggleDeletePosts" checked>
+              <span class="slider round"></span>
+            </label>
+          </div>
+
+          <!-- Denúncia de Conteúdo Ilícito via Resposta -->
+          <div class="setting-item">
+            <div class="setting-info">
+              <span class="setting-label">Denúncia de Conteúdo Ilícito</span>
+              <span class="setting-hint">Permite marcar mensagem/mídia com <code>/denuncia</code> ou <code>/report</code> para banir o usuário e excluir suas mídias.</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="togglePublicReport" checked>
+              <span class="slider round"></span>
+            </label>
+          </div>
+
+          <!-- Restringir denúncia a Administradores -->
+          <div class="setting-item">
+            <div class="setting-info">
+              <span class="setting-label">Apenas Admins podem Denunciar</span>
+              <span class="setting-hint">Se desligado, qualquer membro do grupo pode denunciar e banir conteúdo ilícito.</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggleReporterAdminOnly">
               <span class="slider round"></span>
             </label>
           </div>

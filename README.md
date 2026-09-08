@@ -5,12 +5,14 @@ Bot avançado de moderação automática para grupos do Telegram com painel admi
 ## 🚀 Funcionalidades
 
 - 🚫 **Banimento por Palavras-Chave**: Se algum membro enviar uma palavra proibida configurada no painel, ele é imediatamente banido e **todas as suas mensagens/posts no grupo são apagados** (`revoke_messages: true`).
+- 🚨 **Denúncia de Conteúdo Ilícito via Resposta**: Qualquer usuário pode responder a uma mensagem ou mídia ilícita digitando `/denuncia`, `/report` ou `/ilicito`. O bot imediatamente **bane o autor infrator, apaga a mídia denunciada e exclui todo o histórico de posts dele** no grupo.
 - 🔇 **Anti-Link (Silenciamento Automático)**: Se alguém enviar links (`http://`, `https://`, `t.me`, etc.), a mensagem é deletada e o usuário é silenciado (mute) pelo período configurado.
 - 🛡️ **Proteção de Administradores**: Administradores do grupo não são punidos acidentalmente.
 - 📊 **Painel Web Administrativo**:
   - Adição e remoção dinâmica de palavras-chave proibidas.
   - Ativação/desativação do Anti-Link com tempo de mute ajustável (ex: 15m, 1h, 24h ou permanente).
-  - Histórico de auditoria com detalhes da infração.
+  - Ativação e configuração do comando de denúncia de conteúdo ilícito.
+  - Histórico de auditoria com detalhes da infração (incluindo quem denunciou).
   - Botão de **Desbanir** e **Desmutar** direto pelo painel web.
   - Status de conexão e estatísticas em tempo real.
 
