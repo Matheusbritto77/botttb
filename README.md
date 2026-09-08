@@ -39,12 +39,28 @@ npm install
 ```
 
 ### 4. Iniciar a Aplicação
+
+#### Opção A: Executar Diretamente (Node.js)
 ```bash
 npm start
 ```
 Para modo de desenvolvimento com reload automático:
 ```bash
 npm run dev
+```
+
+#### Opção B: Executar via Docker Compose 🐳
+Com o Docker instalado, basta rodar:
+```bash
+docker compose up -d --build
+```
+Para visualizar os logs:
+```bash
+docker compose logs -f
+```
+Para parar:
+```bash
+docker compose down
 ```
 
 Abra o painel no navegador: **`http://localhost:3000`**
