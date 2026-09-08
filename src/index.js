@@ -5,13 +5,15 @@ import { createServer } from './server.js';
 import { BotManager } from './bot.js';
 
 const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
 
 async function main() {
   const app = createServer();
 
-  app.listen(PORT, async () => {
+  app.listen(PORT, HOST, async () => {
     console.log('====================================================');
-    console.log(`🚀 Painel Web disponível em: http://localhost:${PORT}`);
+    console.log(`🚀 Painel Web ativo em http://${HOST}:${PORT}`);
+    console.log(`   (Acessível externamente e na rede local via 0.0.0.0:${PORT})`);
     console.log('====================================================');
 
     // Tenta iniciar o bot com o token disponível
