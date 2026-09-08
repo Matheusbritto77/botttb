@@ -57,15 +57,44 @@ function checkForbiddenKeyword(text, keywords) {
   return null;
 }
 
-const REPORT_COMMANDS = ['/denuncia', '/report', '/ilicito', '/ilícito', '/ban', '/conteudoilicito', '!denuncia', '!report'];
-
 /**
- * Verifica se o texto é um comando de denúncia
+ * Verifica se a mensagem é o comando único /denuncia
  */
-function isReportCommand(text) {
+function isDenunciaCommand(text) {
   if (!text) return false;
-  const firstWord = text.trim().toLowerCase().split(/\s+/)[0].replace(/@\w+$/, '');
-  return REPORT_COMMANDS.includes(firstWord);
+  const firstWord = text.trim().toLowerCase().split(/\s+/)[0];
+  return firstWord === '/denuncia' || firstWord.startsWith('/denuncia@');
+}
+
+// Armazena em memória os IDs de mensagens recentes de cada usuário por chat para exclusão completa
+const recentUserMessages = new Map();
+
+function trackUserMessage(chatId, userId, messageId) {
+  const key = `${chatId}:${userId}`;
+  if (!recentUserMessages.has(key)) {
+    recentUserMessages.set(key, []);
+  }
+  const list = recentUserMessages.get(key);
+  list.push(messageId);
+  if (list.length > 80) list.shift();
+}
+
+async function deleteUserMessagesFromMemory(ctx, chatId, userId) {
+  const key = `${chatId}:${userId}`;
+  const list = recentUserMessages.get(key) || [];
+  if (list.length > 0) {
+    try {
+      await ctx.telegram.callApi('deleteMessages', {
+        chat_id: chatId,
+        message_ids: list
+      });
+    } catch (_) {
+      for (const msgId of list) {
+        ctx.telegram.deleteMessage(chatId, msgId).catch(() => {});
+      }
+    }
+    recentUserMessages.delete(key);
+  }
 }
 
 /**
@@ -138,7 +167,7 @@ function setupHandlers(bot) {
       await ctx.reply(
         '🛡️ <b>Bot de Moderação Ativo!</b>\n\n' +
         '• Moderação de palavras proibidas e anti-link automática.\n' +
-        '• <b>Denúncia de Conteúdo Ilícito:</b> Qualquer membro pode responder a uma mensagem ilícita com <code>/denuncia</code> ou <code>/report</code> para banir o infrator e excluir todas as suas mídias!\n\n' +
+        '• <b>Denúncia de Conteúdo Ilícito:</b> Qualquer membro pode responder a uma mensagem ilícita com o comando único <code>/denuncia</code> para banir o autor e excluir todas as mídias e posts dele no grupo!\n\n' +
         'Por favor me promova a <b>Administrador</b> com permissões para <i>Excluir mensagens</i> e <i>Banir usuários</i>.',
         { parse_mode: 'HTML' }
       ).catch(() => {});
@@ -153,7 +182,7 @@ function setupHandlers(bot) {
     // Apenas monitora grupos e supergrupos
     if (ctx.chat.type !== 'group' && ctx.chat.type !== 'supergroup') {
       if (ctx.chat.type === 'private' && message.text === '/start') {
-        return ctx.reply('👋 Olá! Sou o Bot de Moderação. Adicione-me a um grupo como Administrador para gerenciar palavras proibidas, links e denúncias de conteúdo ilícito.');
+        return ctx.reply('👋 Olá! Sou o Bot de Moderação. Adicione-me a um grupo como Administrador para gerenciar palavras proibidas, links e denúncias de conteúdo com o comando /denuncia.');
       }
       return;
     }
@@ -163,30 +192,33 @@ function setupHandlers(bot) {
 
     Storage.incrementStat('totalMessagesChecked');
 
+    // Rastreia ID da mensagem para exclusão caso o usuário venha a ser banido
+    trackUserMessage(ctx.chat.id, ctx.from.id, message.message_id);
+
     const text = message.text || message.caption || '';
     const settings = Storage.getSettings();
 
-    // --- RECURSO: MARCAÇÃO / DENÚNCIA DE CONTEÚDO ILÍCITO VIA RESPOSTA (REPLY) ---
-    if (settings.publicReportEnabled !== false && isReportCommand(text)) {
+    // --- RECURSO: COMANDO ÚNICO /denuncia PARA BANIR E EXCLUIR MENSAGENS E MÍDIAS ---
+    if (settings.publicReportEnabled !== false && isDenunciaCommand(text)) {
       const reportedMsg = message.reply_to_message;
 
-      // Se não marcou/respondeu nenhuma mensagem, dá a instrução de como usar
+      // Se não respondeu a nenhuma mensagem, envia guia de como usar
       if (!reportedMsg) {
         await ctx.deleteMessage(message.message_id).catch(() => {});
         await sendTempWarning(
           ctx,
-          'ℹ️ <b>Como denunciar conteúdo ilícito:</b>\nResponda diretamente (Reply) à mensagem ou mídia suspeita digitando <code>/denuncia</code> ou <code>/report</code> para banir o infrator e excluir todas as suas mídias.',
-          7000
+          'ℹ️ <b>Como usar o comando /denuncia:</b>\nResponda diretamente (Reply) à mensagem ou mídia suspeita digitando <code>/denuncia</code> para banir o usuário e excluir todas as mensagens dele do grupo.',
+          8000
         );
         return;
       }
 
-      // Verifica se o usuário tem permissão caso reporterMustBeAdmin esteja ativo
+      // Verifica se há restrição para apenas admins denunciarem
       if (settings.reporterMustBeAdmin) {
         const isReporterAdmin = await isMemberAdmin(ctx, ctx.from.id);
         if (!isReporterAdmin) {
           await ctx.deleteMessage(message.message_id).catch(() => {});
-          await sendTempWarning(ctx, '⚠️ Apenas administradores podem utilizar este comando de moderação.', 6000);
+          await sendTempWarning(ctx, '⚠️ Apenas administradores podem utilizar o comando <code>/denuncia</code>.', 6000);
           return;
         }
       }
@@ -201,7 +233,7 @@ function setupHandlers(bot) {
         return;
       }
 
-      // Não permite banir bots do sistema ou o próprio bot
+      // Não permite banir bots
       if (reportedUser.is_bot) {
         await ctx.deleteMessage(message.message_id).catch(() => {});
         await sendTempWarning(ctx, '⚠️ Não é possível banir um bot do sistema.', 6000);
@@ -212,30 +244,37 @@ function setupHandlers(bot) {
       const isTargetAdmin = await isMemberAdmin(ctx, reportedUser.id);
       if (isTargetAdmin) {
         await ctx.deleteMessage(message.message_id).catch(() => {});
-        await sendTempWarning(ctx, '⚠️ Ação bloqueada: Não é permitido banir administradores do grupo.', 6000);
+        await sendTempWarning(ctx, '⚠️ <b>Ação bloqueada:</b> O usuário é Administrador/Dono do grupo e o Telegram não permite que bots banam administradores.', 7000);
         return;
       }
 
-      console.log(`[Denúncia] Conteúdo ilícito marcado por ${ctx.from.first_name} contra ${reportedUser.first_name} (${reportedUser.id})`);
+      console.log(`[Denúncia] /denuncia acionado por ${ctx.from.first_name} contra ${reportedUser.first_name} (${reportedUser.id})`);
 
-      // 1. Apaga a mensagem de comando do denunciante
+      // 1. Apaga a mensagem de comando /denuncia
       await ctx.deleteMessage(message.message_id).catch(() => {});
 
       // 2. Apaga a mensagem/mídia marcada
       await ctx.deleteMessage(reportedMsg.message_id).catch(() => {});
 
-      // 3. Aplica o banimento no usuário infrator com revoke_messages: true (exclui todas as mídias e posts dele)
+      // 3. Aplica o banimento no usuário infrator com revoke_messages: true (Telegram Bot API nativo)
       let banSuccess = false;
+      let banErrorMessage = '';
       try {
-        await ctx.banChatMember(reportedUser.id, {
-          revoke_messages: settings.deleteBannedUserPosts !== false
+        await ctx.telegram.callApi('banChatMember', {
+          chat_id: ctx.chat.id,
+          user_id: reportedUser.id,
+          revoke_messages: true
         });
         banSuccess = true;
       } catch (err) {
+        banErrorMessage = err.message || '';
         console.error('[Denúncia] Falha ao banir usuário denunciado:', err.message);
       }
 
       if (banSuccess) {
+        // 4. Exclui também mensagens recentes rastreadas desse usuário para garantir exclusão completa
+        await deleteUserMessagesFromMemory(ctx, ctx.chat.id, reportedUser.id);
+
         const contentDesc = describeMessageContent(reportedMsg);
         const reporterTag = ctx.from.username ? `@${ctx.from.username}` : ctx.from.first_name;
         const reportedTag = reportedUser.username ? `@${reportedUser.username}` : `ID: ${reportedUser.id}`;
@@ -248,17 +287,27 @@ function setupHandlers(bot) {
           userTag: reportedTag,
           chatId: ctx.chat.id,
           chatTitle: ctx.chat.title,
-          reason: `Conteúdo ilícito denunciado por ${reporterTag} (Comando de marcação)`,
+          reason: `Denúncia via /denuncia feita por ${reporterTag}`,
           text: contentDesc
         });
 
         await sendTempWarning(
           ctx,
-          `🚨 <b>Conteúdo Ilícito Removido!</b>\n` +
+          `🚨 <b>Usuário Banido e Conteúdo Excluído!</b>\n` +
           `<b>Infrator:</b> ${reportedUser.first_name} (${reportedTag})\n` +
-          `<b>Ação:</b> Usuário banido e todo o histórico de mensagens/mídias foi excluído.\n` +
+          `<b>Ação:</b> Usuário banido e todas as suas mensagens e mídias foram excluídas do grupo via <code>/denuncia</code>.\n` +
           `<b>Denunciado por:</b> ${reporterTag}`
         );
+      } else {
+        let msg = `⚠️ <b>Não foi possível banir ${reportedUser.first_name}.</b>\n`;
+        if (banErrorMessage.includes('not enough rights') || banErrorMessage.includes("can't restrict")) {
+          msg += 'O bot precisa da permissão de Administrador para <b>Banir Usuários</b> (<code>can_restrict_members</code>). Por favor, conceda essa permissão nas configurações do grupo.';
+        } else if (banErrorMessage.includes('owner') || banErrorMessage.includes('administrator')) {
+          msg += 'O Telegram não permite banir Administradores ou Donos do grupo.';
+        } else {
+          msg += `Erro retornado pelo Telegram: ${banErrorMessage}`;
+        }
+        await sendTempWarning(ctx, msg, 10000);
       }
       return;
     }
@@ -282,7 +331,9 @@ function setupHandlers(bot) {
       // Aplica banimento com exclusão de todas as mensagens do usuário (revoke_messages: true)
       let banSuccess = false;
       try {
-        await ctx.banChatMember(ctx.from.id, {
+        await ctx.telegram.callApi('banChatMember', {
+          chat_id: ctx.chat.id,
+          user_id: ctx.from.id,
           revoke_messages: settings.deleteBannedUserPosts !== false
         });
         banSuccess = true;
@@ -291,6 +342,9 @@ function setupHandlers(bot) {
       }
 
       if (banSuccess) {
+        // Exclui também mensagens rastreadas do usuário
+        await deleteUserMessagesFromMemory(ctx, ctx.chat.id, ctx.from.id);
+
         Storage.incrementStat('totalBans');
         Storage.addLog({
           action: 'BAN',

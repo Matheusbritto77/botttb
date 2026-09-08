@@ -85,41 +85,38 @@ const updatedLog = Storage.getLogs(5).find(l => l.id === logItem.id);
 assert.strictEqual(updatedLog.reverted, true);
 console.log('✓ Logs de Auditoria OK');
 
-// 5. Testes de Comandos de Denúncia de Conteúdo Ilícito
-console.log('5. Testando Comandos de Denúncia de Conteúdo Ilícito...');
-const REPORT_COMMANDS = ['/denuncia', '/report', '/ilicito', '/ilícito', '/ban', '/conteudoilicito', '!denuncia', '!report'];
-function isReportCommand(text) {
+// 5. Testes do Comando Único /denuncia
+console.log('5. Testando Comando Único /denuncia...');
+function isDenunciaCommand(text) {
   if (!text) return false;
-  const firstWord = text.trim().toLowerCase().split(/\s+/)[0].replace(/@\w+$/, '');
-  return REPORT_COMMANDS.includes(firstWord);
+  const firstWord = text.trim().toLowerCase().split(/\s+/)[0];
+  return firstWord === '/denuncia' || firstWord.startsWith('/denuncia@');
 }
 
 const validReportInputs = [
   '/denuncia',
-  '/report',
-  '/ilicito',
-  '/ilícito',
-  '/ban',
   '/denuncia@botttb_bot',
-  '/report motivo grave',
-  '!denuncia',
-  '  /ilicito  '
+  '/denuncia motivo qualquer',
+  '/DENUNCIA',
+  '  /denuncia  '
 ];
 
 for (const input of validReportInputs) {
-  assert.strictEqual(isReportCommand(input), true, `Deveria reconhecer "${input}" como comando de denúncia`);
+  assert.strictEqual(isDenunciaCommand(input), true, `Deveria reconhecer "${input}" como /denuncia`);
 }
 
 const invalidReportInputs = [
   'olá bom dia',
   'denuncia esse cara', // sem barra
   '/denunciar', // comando diferente
+  '/report', // comandos antigos removidos conforme pedido do usuário
+  '/ban',
   '/help',
   'qualquer coisa'
 ];
 
 for (const input of invalidReportInputs) {
-  assert.strictEqual(isReportCommand(input), false, `Não deveria reconhecer "${input}" como comando de denúncia`);
+  assert.strictEqual(isDenunciaCommand(input), false, `Não deveria reconhecer "${input}" como comando /denuncia`);
 }
 
 // Testando storage das novas configurações
